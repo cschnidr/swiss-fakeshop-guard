@@ -1,0 +1,52 @@
+# Generierte Blockliste — NICHT im Repo (Entscheid E1 in SPEC.md).
+# Die Liste lebt ausschliesslich in S3 (versioniert) und wird über CloudFront
+# ausgeliefert. Das Repo enthält Code, nicht die Vorwurfs-Datenbank.
+blocklist.json
+meta.json
+/dist/
+/build/
+
+# Python (Lambda)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# SAM / CloudFormation
+.aws-sam/
+samconfig.toml
+packaged.yaml
+
+# Node (Extension-Build)
+node_modules/
+npm-debug.log*
+.parcel-cache/
+
+# Xcode
+xcuserdata/
+*.xcuserstate
+DerivedData/
+*.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+build/
+
+# Secrets — nie einchecken
+.env
+.env.*
+!.env.example
+*.pem
+*.p8
+*.p12
+*.mobileprovision
+
+# macOS / Editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Grosse Rohdaten aus manuellen Scrape-Läufen
+/tmp/
+*.html.raw

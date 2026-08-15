@@ -1,0 +1,21 @@
+{
+  "$comment": [
+    "Manuelle Ergaenzungen und Korrekturen zur automatisch generierten Liste.",
+    "Wird beim Build ueber die Quelldaten gemergt. Strengeres Tier gewinnt,",
+    "ausser 'action' ist 'remove' -- dann wird der Eintrag unterdrueckt.",
+    "Damit kann ein Shop sofort abgedeckt werden, ohne auf die Quellen zu warten,",
+    "und ein strittiger Eintrag sofort raus, ohne auf den naechsten Build zu warten.",
+    "Jeder Eintrag braucht 'note' und 'added' -- ohne Begruendung kein Override."
+  ],
+  "schema": 1,
+  "entries": [
+    {
+      "domain": "example-shop.ch",
+      "action": "add",
+      "tier": "warn",
+      "reasons": ["undisclosed_dropshipping"],
+      "note": "BEISPIELEINTRAG - beim ersten echten Override loeschen.",
+      "added": "2026-08-15"
+    }
+  ]
+}

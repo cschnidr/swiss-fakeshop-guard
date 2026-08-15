@@ -1,0 +1,52 @@
+name: Korrektur eines Eintrags
+description: Ein Shop ist falsch, falsch zugeordnet oder zu Unrecht gelistet
+title: "[Korrektur] "
+labels: ["korrektur"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Bitte zuerst lesen:** Dieses Projekt spiegelt fremde Warnlisten.
+
+        Wenn die **Quelle** (z. B. Stiftung für Konsumentenschutz) Ihren Shop
+        listet, wenden Sie sich bitte **dort** an den Herausgeber — eine
+        Streichung dort wirkt hier automatisch binnen 24 Stunden, ohne dass
+        Sie hier etwas tun müssen. Siehe `NOTICE.md`.
+
+        Dieses Formular ist für Fehler, die **bei uns** entstanden sind:
+        falsches Mapping, Tippfehler in der Domain, falsche Warnstufe,
+        Verwechslung durch Domain-Normalisierung.
+
+  - type: input
+    id: domain
+    attributes:
+      label: Betroffene Domain
+      placeholder: beispiel-shop.ch
+    validations:
+      required: true
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Art des Fehlers
+      options:
+        - Domain falsch geschrieben / falsche Domain getroffen
+        - Falsche Firma zugeordnet
+        - Warnstufe zu streng (block statt warn)
+        - Eintrag existiert bei der Quelle nicht (mehr)
+        - Anderes
+    validations:
+      required: true
+
+  - type: textarea
+    id: detail
+    attributes:
+      label: Was ist falsch, und was wäre korrekt?
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Belege (optional)
+      description: Links, Screenshots, Handelsregister-Auszug, Korrespondenz mit der Quelle
