@@ -56,17 +56,28 @@ DNS-Profil vorgesehen (blockt hart, ohne Erklärung).
 
 Weitere bekannte Grenzen in [`SPEC.md` §9](SPEC.md).
 
-## Datenquellen und Korrekturen
+## Neue Fake-Shops melden
+
+Wenn Sie auf einen Shop stossen, der noch nicht gelistet ist: melden Sie ihn
+**direkt bei der Quelle**, nicht hier. Dort wird geprüft und publiziert, und
+beim nächsten täglichen Refresh ist er automatisch auch in dieser Liste — und
+hilft allen anderen mit, die die Listen nutzen.
+
+- Schweiz: [Meldeformular Konsumentenschutz](https://findmind.ch/c/dropshipping) (anonym)
+- Österreich: [Meldeformular Watchlist Internet](https://www.watchlist-internet.at/meldeformular/)
+
+## Datenquellen
 
 Dieses Projekt **spiegelt fremde Warnlisten und erhebt keine eigenen Vorwürfe**.
-Jeder Eintrag trägt Quelle und Listendatum, und die Warnung zeigt beides an.
+Jeder Eintrag trägt Quelle und Listendatum, und die Warnung zeigt beides an. Wir
+prüfen keine Shops und entscheiden nicht über Aufnahme oder Streichung — das tun
+ausschliesslich die Herausgeber der Listen.
 
-Wenn Sie Betreiber eines gelisteten Shops sind und den Eintrag für falsch halten:
-bitte zuerst an die Quelle wenden, die ihn publiziert — wir übernehmen deren
-Korrektur automatisch beim nächsten Build. Für Fehler auf unserer Seite
-(falsches Mapping, Tippfehler in einer Domain) bitte ein Issue eröffnen.
+Die Listen werden täglich neu abgeholt. Streicht eine Quelle einen Eintrag,
+verschwindet er hier beim nächsten Refresh von selbst.
 
-Details und Disclaimer: `NOTICE.md`.
+Details, Haftungsausschluss und der Weg für technische Fehlermeldungen:
+[`NOTICE.md`](NOTICE.md).
 
 ## Lizenz
 

@@ -6,16 +6,19 @@ body:
   - type: markdown
     attributes:
       value: |
-        **Bitte zuerst lesen:** Dieses Projekt spiegelt fremde Warnlisten.
+        **Bitte zuerst lesen:** Dieses Projekt spiegelt fremde Warnlisten. Wir
+        prüfen keine Shops und entscheiden nicht über Aufnahme oder Streichung.
 
         Wenn die **Quelle** (z. B. Stiftung für Konsumentenschutz) Ihren Shop
-        listet, wenden Sie sich bitte **dort** an den Herausgeber — eine
-        Streichung dort wirkt hier automatisch binnen 24 Stunden, ohne dass
-        Sie hier etwas tun müssen. Siehe `NOTICE.md`.
+        listet, ist **sie** zuständig — wenden Sie sich bitte dorthin. Die Listen
+        werden hier täglich neu abgeholt, eine Streichung an der Quelle wirkt
+        also von selbst. Siehe `NOTICE.md`.
 
-        Dieses Formular ist für Fehler, die **bei uns** entstanden sind:
-        falsches Mapping, Tippfehler in der Domain, falsche Warnstufe,
-        Verwechslung durch Domain-Normalisierung.
+        Dieses Formular ist ausschliesslich für **technische** Fehler in diesem
+        Projekt: falsch geparste Domain, Feld-Mapping, das eine Quelle
+        unzutreffend wiedergibt, offensichtlich falsche Warnstufe.
+
+        Freizeitprojekt ohne zugesagte Reaktionszeit.
 
   - type: input
     id: domain

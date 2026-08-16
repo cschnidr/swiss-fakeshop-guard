@@ -23,10 +23,33 @@ der MIT-Lizenz dieses Repositorys. Die MIT-Lizenz deckt ausschliesslich den
 Code.
 
 Abrufverhalten: ein HTTP-Request pro Quelle pro Tag, mit `If-Modified-Since`
-und einem `User-Agent`, der auf dieses Repository und eine Kontaktadresse
-verweist. Wenn Sie Herausgeber einer der Listen sind und den Abruf anders
-geregelt haben möchten — oder einen strukturierten Feed anbieten können —
-melden Sie sich bitte, wir stellen um.
+und einem `User-Agent`, der auf dieses Repository verweist. Das ist unterhalb
+jeder sinnvollen Rate-Limit-Schwelle und greift ausschliesslich öffentlich
+zugängliche Seiten ab.
+
+Sind Sie Herausgeber einer der Listen und möchten den Abruf anders geregelt
+haben — oder können einen strukturierten Feed anbieten? Dann eröffnen Sie bitte
+ein Issue; ein offizieller Feed wäre für beide Seiten robuster als das Abgreifen
+von HTML.
+
+## Neue Fake- oder Dropshipping-Shops melden
+
+Diese Listen leben davon, dass Betroffene melden. Wenn Sie auf einen Shop
+gestossen sind, der hier fehlt, melden Sie ihn **direkt bei der Quelle** — dort
+wird geprüft und publiziert, und beim nächsten täglichen Refresh ist er
+automatisch auch hier drin:
+
+- **Schweiz — Dropshipping / problematische Shops:**
+  [Meldeformular Konsumentenschutz](https://findmind.ch/c/dropshipping)
+  (anonym, dauert Sekunden)
+- **Österreich — betrügerische Shops:**
+  [Meldeformular Watchlist Internet](https://www.watchlist-internet.at/meldeformular/)
+- **Irreführende Schweiz-Werbung (UWG):**
+  [SECO-Beschwerde](https://www.seco.admin.ch/seco/de/home/Werbe_Geschaeftsmethoden/Unlauterer_Wettbewerb/Beschwerde_melden.html)
+
+Meldungen an dieses Repository ergänzen die Listen **nicht** — wir führen keine
+eigene Liste und prüfen keine Shops. Der Weg über die Quelle ist der einzige,
+der wirkt, und er hilft allen anderen Nutzer:innen der Listen mit.
 
 ## Keine Gewähr
 
@@ -38,29 +61,31 @@ melden Sie sich bitte, wir stellen um.
   Wiedergabe einer Einschätzung der genannten Quelle.
 - Die Warnstufe ist immer übergehbar. Es wird niemand daran gehindert, dort zu
   kaufen.
+- Dies ist ein unbezahltes Freizeitprojekt ohne Support, ohne Verfügbarkeits-
+  garantie und ohne zugesagte Reaktionszeiten.
 
 ## Sie betreiben einen gelisteten Shop?
 
-**Bitte wenden Sie sich zuerst an die Quelle, die den Eintrag publiziert hat**
-(Tabelle oben). Wir übernehmen deren Korrektur automatisch beim nächsten
-täglichen Build — eine Streichung dort wirkt hier binnen 24 Stunden, ohne dass
-Sie uns kontaktieren müssen.
+**Zuständig ist die Quelle, die den Eintrag publiziert hat** (Tabelle oben) —
+nicht dieses Projekt. Wir treffen keine Einschätzung über Ihren Shop, prüfen
+keine Einträge und entscheiden nicht über Aufnahme oder Streichung.
 
-Für Fehler, die bei **uns** entstanden sind — falsches Feld-Mapping, Tippfehler
-in einer Domain, eine Verwechslung durch Domain-Normalisierung, eine falsche
-Warnstufe — eröffnen Sie bitte ein Issue mit dem Template „Korrektur eines
-Eintrags" oder schreiben an die Kontaktadresse unten. Wir behandeln solche
-Meldungen vorrangig und nehmen einen strittigen Eintrag im Zweifel bis zur
-Klärung heraus.
+Die Listen werden **täglich neu abgeholt**, wie oben beschrieben. Sobald die
+Quelle Ihren Eintrag streicht oder ändert, verschwindet bzw. ändert er sich hier
+beim nächsten Refresh von selbst. Sie müssen uns dafür nicht kontaktieren, und
+wir können Ihnen umgekehrt auch nicht helfen, solange der Eintrag bei der Quelle
+steht.
 
-Kontakt: siehe Repository-Profil auf GitHub.
+Für rein **technische** Fehler in diesem Projekt — eine falsch geparste Domain,
+ein Feld-Mapping, das eine Quelle unzutreffend wiedergibt — können Sie ein Issue
+eröffnen (Template „Korrektur eines Eintrags"). Das ist ein Bug-Report an ein
+Freizeitprojekt, keine Beschwerdestelle: es gibt keine zugesagte Bearbeitungs-
+oder Reaktionszeit.
 
 ## Für Nutzer:innen
 
-Eine Warnung ist ein Hinweis zum Nachdenken, keine Kaufentscheidung. Wenn Sie
-bei einem gelisteten Shop schlechte Erfahrungen gemacht haben, melden Sie das
-bitte direkt an die Quelle — das ist es, was diese Listen wachsen und aktuell
-bleiben lässt:
-
-- Schweiz: [Meldeformular Konsumentenschutz](https://findmind.ch/c/dropshipping)
-- Irreführende Schweiz-Werbung: [SECO UWG-Beschwerde](https://www.seco.admin.ch/seco/de/home/Werbe_Geschaeftsmethoden/Unlauterer_Wettbewerb/Beschwerde_melden.html)
+Eine Warnung ist ein Hinweis zum Nachdenken, keine Kaufentscheidung — und ein
+fehlender Eintrag ist kein Gütesiegel. Wenn Sie bei einem gelisteten oder noch
+nicht gelisteten Shop schlechte Erfahrungen gemacht haben: melden Sie das bei
+der Quelle (Links oben). Das ist es, was diese Listen wachsen und aktuell
+bleiben lässt.
