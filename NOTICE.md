@@ -44,10 +44,9 @@ automatisch auch hier drin:
   (anonym, dauert Sekunden)
 - **Österreich — betrügerische Shops:**
   [Meldeformular Watchlist Internet](https://www.watchlist-internet.at/fake-shop-melden/)
-- **Irreführende Schweiz-Werbung (UWG):** über das SECO — Einstieg via
-  [seco.admin.ch](https://www.seco.admin.ch/) unter „Werbe- und
-  Geschäftsmethoden" (Deeplink hier absichtlich nicht gesetzt, das SECO
-  verschiebt die Seite regelmässig)
+- **Irreführende Schweiz-Werbung / unlautere Geschäftspraktiken (UWG):**
+  [Beschwerde beim SECO melden](https://www.seco.admin.ch/de/beschwerde-wegen-unlauterer-geschaeftspraktiken-melden)
+  — zuständig u. a. für falsche „Schweizer Design"-Angaben und Fantasie-Rabatte
 
 Meldungen an dieses Repository ergänzen die Listen **nicht** — wir führen keine
 eigene Liste und prüfen keine Shops. Der Weg über die Quelle ist der einzige,
