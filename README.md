@@ -64,7 +64,7 @@ beim nächsten täglichen Refresh ist er automatisch auch in dieser Liste — un
 hilft allen anderen mit, die die Listen nutzen.
 
 - Schweiz: [Meldeformular Konsumentenschutz](https://findmind.ch/c/dropshipping) (anonym)
-- Österreich: [Meldeformular Watchlist Internet](https://www.watchlist-internet.at/meldeformular/)
+- Österreich: [Meldeformular Watchlist Internet](https://www.watchlist-internet.at/fake-shop-melden/)
 
 ## Datenquellen
 

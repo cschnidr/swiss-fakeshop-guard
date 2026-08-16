@@ -43,9 +43,11 @@ automatisch auch hier drin:
   [Meldeformular Konsumentenschutz](https://findmind.ch/c/dropshipping)
   (anonym, dauert Sekunden)
 - **Österreich — betrügerische Shops:**
-  [Meldeformular Watchlist Internet](https://www.watchlist-internet.at/meldeformular/)
-- **Irreführende Schweiz-Werbung (UWG):**
-  [SECO-Beschwerde](https://www.seco.admin.ch/seco/de/home/Werbe_Geschaeftsmethoden/Unlauterer_Wettbewerb/Beschwerde_melden.html)
+  [Meldeformular Watchlist Internet](https://www.watchlist-internet.at/fake-shop-melden/)
+- **Irreführende Schweiz-Werbung (UWG):** über das SECO — Einstieg via
+  [seco.admin.ch](https://www.seco.admin.ch/) unter „Werbe- und
+  Geschäftsmethoden" (Deeplink hier absichtlich nicht gesetzt, das SECO
+  verschiebt die Seite regelmässig)
 
 Meldungen an dieses Repository ergänzen die Listen **nicht** — wir führen keine
 eigene Liste und prüfen keine Shops. Der Weg über die Quelle ist der einzige,
