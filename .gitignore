@@ -6,6 +6,11 @@ meta.json
 /dist/
 /build/
 
+# Build-Artefakt: der Deploy-Workflow kopiert data/overrides.json hierhin,
+# damit sie im Lambda-Bundle unter /var/task/data/ landet. Die Quelldatei
+# liegt im Repo-Root, diese Kopie ist ephemer.
+/pipeline/data/
+
 # Python (Lambda)
 __pycache__/
 *.py[cod]

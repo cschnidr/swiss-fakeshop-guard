@@ -1,0 +1,124 @@
+name: Deploy
+
+# Nur von main und nur manuell -- nie aus einem Pull Request. Bei einem
+# oeffentlichen Repo ist das entscheidend: ein Fork-PR darf niemals in einen
+# Job laufen, der die Deploy-Rolle annehmen kann. Die sub-Bedingung im
+# OIDC-Trust (repo + ref) ist die zweite, harte Absicherung.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'pipeline/**'
+      - 'data/overrides.json'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+    inputs:
+      run_after_deploy:
+        description: Nach dem Deploy einen Build-Lauf ausloesen
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write      # fuer den OIDC-Token-Austausch
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-central-2      # Zuerich
+  STACK_NAME: swiss-fakeshop-guard
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Unit-Tests (Gate vor dem Deploy)
+        working-directory: pipeline
+        run: python -m unittest discover -s tests -p 'test_*.py'
+
+      - uses: aws-actions/setup-sam@v2
+        with:
+          use-installer: true
+
+      - name: AWS-Credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: gha-${{ github.run_id }}
+
+      - name: Wer bin ich
+        run: aws sts get-caller-identity
+
+      # overrides.json liegt im Repo-Root, muss aber ins Lambda-Bundle.
+      # Deshalb vor dem Build nach pipeline/data/ kopieren -- der Handler
+      # sucht sie dort unter /var/task/data/overrides.json.
+      - name: Overrides ins Bundle kopieren
+        run: |
+          mkdir -p pipeline/data
+          cp data/overrides.json pipeline/data/overrides.json
+          python -m json.tool pipeline/data/overrides.json > /dev/null
+
+      - name: sam validate
+        working-directory: pipeline
+        run: sam validate --lint --region "$AWS_REGION"
+
+      - name: sam build
+        working-directory: pipeline
+        run: sam build
+
+      - name: sam deploy
+        working-directory: pipeline
+        run: |
+          sam deploy \
+            --stack-name "$STACK_NAME" \
+            --region "$AWS_REGION" \
+            --capabilities CAPABILITY_IAM \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --resolve-s3 \
+            --tags project=swiss-fakeshop-guard managed-by=github-actions
+
+      - name: Outputs
+        id: outputs
+        run: |
+          aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" --region "$AWS_REGION" \
+            --query 'Stacks[0].Outputs[].[OutputKey,OutputValue]' \
+            --output table
+          echo "fn=$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" --region "$AWS_REGION" \
+            --query "Stacks[0].Outputs[?OutputKey=='FunctionName'].OutputValue" \
+            --output text)" >> "$GITHUB_OUTPUT"
+          echo "meta=$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" --region "$AWS_REGION" \
+            --query "Stacks[0].Outputs[?OutputKey=='MetaUrl'].OutputValue" \
+            --output text)" >> "$GITHUB_OUTPUT"
+
+      - name: Build-Lauf ausloesen (optional)
+        if: inputs.run_after_deploy
+        run: |
+          aws lambda invoke \
+            --function-name "${{ steps.outputs.fn }}" \
+            --region "$AWS_REGION" \
+            --cli-binary-format raw-in-base64-out \
+            --payload '{}' /tmp/out.json
+          cat /tmp/out.json
+
+      - name: Zusammenfassung
+        run: |
+          {
+            echo "### Deploy nach \`$AWS_REGION\`"
+            echo
+            echo "- Stack: \`$STACK_NAME\`"
+            echo "- meta.json: ${{ steps.outputs.meta }}"
+          } >> "$GITHUB_STEP_SUMMARY"

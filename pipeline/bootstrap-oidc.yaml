@@ -1,0 +1,252 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  EINMALIGER Bootstrap: GitHub-OIDC-Provider + Deploy-Rolle fuer
+  swiss-fakeshop-guard. Danach deployt der Actions-Workflow mit kurzlebigen
+  STS-Tokens -- es liegt nirgends ein statischer AWS-Key, weder in GitHub
+  Secrets noch auf einer Entwicklermaschine.
+
+  Anwenden mit Admin-Rechten, einmal:
+
+    aws cloudformation deploy \
+      --template-file pipeline/bootstrap-oidc.yaml \
+      --stack-name swiss-fakeshop-guard-oidc \
+      --capabilities CAPABILITY_NAMED_IAM \
+      --region eu-central-2 \
+      --parameter-overrides GitHubRepo=cschnidr/swiss-fakeshop-guard
+
+  Den Output RoleArn danach als Repository-Variable AWS_DEPLOY_ROLE_ARN
+  im GitHub-Repo eintragen (Settings -> Secrets and variables -> Actions ->
+  Variables). Die Rolle ist keine Geheimnis-Information, eine Variable
+  genuegt -- ohne den OIDC-Trust ist der ARN nutzlos.
+
+Parameters:
+  GitHubRepo:
+    Type: String
+    Default: cschnidr/swiss-fakeshop-guard
+    AllowedPattern: '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
+    Description: owner/repo -- begrenzt, WER diese Rolle annehmen darf.
+
+  AllowedRef:
+    Type: String
+    Default: refs/heads/main
+    Description: >
+      Nur dieser Ref darf deployen. Entscheidend bei einem OEFFENTLICHEN Repo:
+      ohne diese Bedingung koennte ein Workflow aus einem Fork-PR die Rolle
+      annehmen.
+
+  AppStackName:
+    Type: String
+    Default: swiss-fakeshop-guard
+    Description: Name des Anwendungs-Stacks, den die Rolle verwalten darf.
+
+  CreateOidcProvider:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: >
+      Auf 'false' setzen, wenn der GitHub-OIDC-Provider im Account schon
+      existiert (pro Account nur einmal moeglich).
+
+Conditions:
+  ShouldCreateProvider: !Equals [!Ref CreateOidcProvider, 'true']
+
+Resources:
+
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: ShouldCreateProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList: [sts.amazonaws.com]
+      # Thumbprint wird von AWS fuer bekannte IdPs selbst verifiziert; der
+      # Wert ist historisch gefordert, aber nicht mehr sicherheitsrelevant.
+      ThumbprintList: ['6938fd4d98bab03faadb97b34396831e3780aea1']
+
+  DeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AppStackName}-github-deploy'
+      Description: !Sub 'Deploy-Rolle fuer ${GitHubRepo} via GitHub OIDC'
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If
+                - ShouldCreateProvider
+                - !Ref GitHubOidcProvider
+                - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com'
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                # sub bindet Repo UND Ref. Ohne das waere die Rolle aus jedem
+                # Fork-Workflow annehmbar -- der klassische Fehler bei
+                # oeffentlichen Repos.
+                token.actions.githubusercontent.com:sub: !Sub 'repo:${GitHubRepo}:ref:${AllowedRef}'
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+
+      Policies:
+        - PolicyName: sam-deploy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+
+              # CloudFormation: nur der eigene Stack.
+              - Sid: CloudFormationOwnStack
+                Effect: Allow
+                Action:
+                  - cloudformation:CreateStack
+                  - cloudformation:UpdateStack
+                  - cloudformation:DescribeStacks
+                  - cloudformation:DescribeStackEvents
+                  - cloudformation:DescribeStackResource
+                  - cloudformation:DescribeStackResources
+                  - cloudformation:GetTemplate
+                  - cloudformation:GetTemplateSummary
+                  - cloudformation:ListStackResources
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:ExecuteChangeSet
+                  - cloudformation:DeleteChangeSet
+                  - cloudformation:ValidateTemplate
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:cloudformation:*:${AWS::AccountId}:stack/${AppStackName}/*'
+                  - !Sub 'arn:${AWS::Partition}:cloudformation:*:${AWS::AccountId}:stack/${AppStackName}-*/*'
+                  - !Sub 'arn:${AWS::Partition}:cloudformation:*:${AWS::AccountId}:changeSet/*'
+
+              # SAM braucht die Transform-Registry.
+              - Sid: ServerlessTransform
+                Effect: Allow
+                Action: cloudformation:*
+                Resource: !Sub 'arn:${AWS::Partition}:cloudformation:*:aws:transform/Serverless-2016-10-31'
+
+              # sam deploy legt einen Artefakt-Bucket an bzw. nutzt ihn.
+              - Sid: SamArtifactBucket
+                Effect: Allow
+                Action:
+                  - s3:CreateBucket
+                  - s3:GetBucketLocation
+                  - s3:ListBucket
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:PutBucketVersioning
+                  - s3:PutBucketPolicy
+                  - s3:PutBucketPublicAccessBlock
+                  - s3:PutEncryptionConfiguration
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:s3:::aws-sam-cli-managed-*'
+                  - !Sub 'arn:${AWS::Partition}:s3:::aws-sam-cli-managed-*/*'
+
+              # Die Ressourcen des Anwendungs-Stacks.
+              - Sid: BlocklistBucket
+                Effect: Allow
+                Action:
+                  - s3:CreateBucket
+                  - s3:DeleteBucketPolicy
+                  - s3:GetBucket*
+                  - s3:GetEncryptionConfiguration
+                  - s3:GetLifecycleConfiguration
+                  - s3:ListBucket
+                  - s3:PutBucket*
+                  - s3:PutEncryptionConfiguration
+                  - s3:PutLifecycleConfiguration
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${AppStackName}*'
+
+              - Sid: Lambda
+                Effect: Allow
+                Action:
+                  - lambda:AddPermission
+                  - lambda:CreateFunction
+                  - lambda:DeleteFunction
+                  - lambda:GetFunction*
+                  - lambda:ListTags
+                  - lambda:PutFunctionConcurrency
+                  - lambda:RemovePermission
+                  - lambda:TagResource
+                  - lambda:UntagResource
+                  - lambda:UpdateFunctionCode
+                  - lambda:UpdateFunctionConfiguration
+                Resource: !Sub 'arn:${AWS::Partition}:lambda:*:${AWS::AccountId}:function:${AppStackName}*'
+
+              # Die Ausfuehrungsrolle der Lambda, die SAM erzeugt.
+              - Sid: ExecutionRole
+                Effect: Allow
+                Action:
+                  - iam:AttachRolePolicy
+                  - iam:CreateRole
+                  - iam:DeleteRole
+                  - iam:DeleteRolePolicy
+                  - iam:DetachRolePolicy
+                  - iam:GetRole
+                  - iam:GetRolePolicy
+                  - iam:PutRolePolicy
+                  - iam:TagRole
+                  - iam:UntagRole
+                Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${AppStackName}*'
+
+              # PassRole eng gefasst: nur an Lambda, nur die Stack-Rollen.
+              - Sid: PassExecutionRoleToLambdaOnly
+                Effect: Allow
+                Action: iam:PassRole
+                Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${AppStackName}*'
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: lambda.amazonaws.com
+
+              - Sid: EventsAndLogsAndAlarms
+                Effect: Allow
+                Action:
+                  - events:DeleteRule
+                  - events:DescribeRule
+                  - events:PutRule
+                  - events:PutTargets
+                  - events:RemoveTargets
+                  - events:TagResource
+                  - logs:CreateLogGroup
+                  - logs:DeleteLogGroup
+                  - logs:DescribeLogGroups
+                  - logs:PutRetentionPolicy
+                  - logs:TagResource
+                  - cloudwatch:DeleteAlarms
+                  - cloudwatch:DescribeAlarms
+                  - cloudwatch:PutMetricAlarm
+                  - cloudwatch:TagResource
+                  - sns:CreateTopic
+                  - sns:DeleteTopic
+                  - sns:GetTopicAttributes
+                  - sns:SetTopicAttributes
+                  - sns:Subscribe
+                  - sns:Unsubscribe
+                  - sns:TagResource
+                Resource: '*'
+
+              # CloudFront kennt kein ressourcenbasiertes ARN-Muster fuer
+              # Create-Aufrufe -- deshalb '*'. Der Blast Radius bleibt durch
+              # die sub-Bedingung im Trust begrenzt.
+              - Sid: CloudFront
+                Effect: Allow
+                Action:
+                  - cloudfront:CreateDistribution
+                  - cloudfront:CreateInvalidation
+                  - cloudfront:CreateOriginAccessControl
+                  - cloudfront:CreateResponseHeadersPolicy
+                  - cloudfront:DeleteDistribution
+                  - cloudfront:DeleteOriginAccessControl
+                  - cloudfront:DeleteResponseHeadersPolicy
+                  - cloudfront:Get*
+                  - cloudfront:List*
+                  - cloudfront:TagResource
+                  - cloudfront:UpdateDistribution
+                  - cloudfront:UpdateOriginAccessControl
+                  - cloudfront:UpdateResponseHeadersPolicy
+                Resource: '*'
+
+Outputs:
+  RoleArn:
+    Description: >
+      Als Repository-Variable AWS_DEPLOY_ROLE_ARN im GitHub-Repo eintragen.
+    Value: !GetAtt DeployRole.Arn
+  TrustedSubject:
+    Description: Nur dieses Subject darf die Rolle annehmen.
+    Value: !Sub 'repo:${GitHubRepo}:ref:${AllowedRef}'

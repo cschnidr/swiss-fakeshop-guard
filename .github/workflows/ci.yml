@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Least privilege: CI liest nur.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Unit-Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Keine Dependencies zu installieren: der Parser nutzt ausschliesslich
+      # die Standardbibliothek, die Tests laufen mit unittest. Kein pip,
+      # kein Cache, kein Lambda-Layer.
+      - name: Unit-Tests
+        working-directory: pipeline
+        run: python -m unittest discover -s tests -p 'test_*.py' -v
+
+      - name: Overrides-Datei ist gueltiges JSON
+        run: python -m json.tool data/overrides.json > /dev/null
+
+      - name: Templates syntaktisch pruefen
+        run: |
+          python - <<'PY'
+          import json, sys
+          # Kein cfn-lint (waere eine Dependency); wir pruefen, dass die
+          # Templates ueberhaupt ladbar sind. Echte Validierung macht
+          # `sam validate` im Deploy-Job gegen die AWS-API.
+          import re, pathlib
+          for p in ["pipeline/template.yaml", "pipeline/bootstrap-oidc.yaml"]:
+              text = pathlib.Path(p).read_text(encoding="utf-8")
+              if "AWSTemplateFormatVersion" not in text:
+                  sys.exit(f"{p}: kein AWSTemplateFormatVersion")
+              # Tabs in YAML sind ein haeufiger, still kaputter Fehler.
+              for n, line in enumerate(text.splitlines(), 1):
+                  if "\t" in line:
+                      sys.exit(f"{p}:{n}: Tab in YAML")
+              print(f"{p}: ok ({len(text)} B)")
+          PY
+
+  parser-against-live-source:
+    name: Parser gegen die Live-Quelle
+    runs-on: ubuntu-latest
+    # Nur informativ: bricht die Quelle ihr Layout, soll CI das melden, aber
+    # keinen PR blockieren -- ein Ausfall der fremden Website ist nicht unser
+    # Fehler. Das Fail-Closed-Gate schuetzt die Produktion ohnehin.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Live-Parse (Smoke)
+        working-directory: pipeline
+        run: |
+          python - <<'PY'
+          import sys, urllib.request
+          sys.path.insert(0, '.')
+          from src import build as build_mod
+          from src.sources import sks
+
+          req = urllib.request.Request(sks.SOURCE_URL, headers={
+              "User-Agent": "swiss-fakeshop-guard/1.0 "
+                            "(+https://github.com/cschnidr/swiss-fakeshop-guard) CI",
+          })
+          html = urllib.request.urlopen(req, timeout=90).read().decode("utf-8", "replace")
+
+          bl = build_mod.build_blocklist({"sks": html})
+          build_mod.validate(bl)
+          meta = build_mod.build_meta(bl)
+          size = len(build_mod.serialize(bl).encode())
+
+          print(f"Einträge:  {bl['entry_count']}")
+          print(f"sha256:    {meta['sha256'][:16]}")
+          print(f"JSON:      {size:,} B")
+
+          gate = build_mod.evaluate_gate(bl, None)
+          if not gate.ok:
+              sys.exit(f"Gate wuerde ablehnen: {gate.reason}")
+          print("Gate: ok")
+          PY
