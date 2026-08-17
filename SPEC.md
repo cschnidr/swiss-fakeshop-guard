@@ -36,26 +36,25 @@ aktualisiert werden.
 Zwei entkoppelte Komponenten, verbunden nur über ein statisches JSON:
 
 ```
-  ┌─────────────────── AWS ───────────────────┐
-  │                                            │
-  │  EventBridge Scheduler (täglich 04:00 UTC) │
-  │              │                             │
-  │              ▼                             │
-  │       Lambda "builder"                     │
-  │         ├── fetch konsumentenschutz.ch     │
-  │         ├── fetch watchlist-internet.at    │
-  │         ├── merge + data/overrides.json    │
-  │         ├── FAIL-CLOSED Gate (§5.3)        │
-  │         └── put S3                         │
-  │              │                             │
-  │              ▼                             │
-  │       S3 (versioned)                       │
-  │         /v1/meta.json                      │
-  │         /v1/blocklist.json                 │
-  │              │                             │
-  │              ▼                             │
-  │       CloudFront (public, CORS *)          │
-  └──────────────┬─────────────────────────────┘
+  ┌─────────────────── AWS (eu-central-2, Zürich) ──────────┐
+  │                                                          │
+  │  EventBridge RULE (täglich 04:00 UTC)                    │
+  │              │                                           │
+  │              ▼                                           │
+  │       Lambda "builder"  (python3.12, arm64)              │
+  │         ├── fetch konsumentenschutz.ch                   │
+  │         ├── merge + data/overrides.json                  │
+  │         ├── FAIL-CLOSED Gate (§5.4)                      │
+  │         └── put S3                                       │
+  │              │                                           │
+  │              ▼                                           │
+  │       S3 (privat, versioned, OAC)                        │
+  │         /v1/meta.json      ~183 B                        │
+  │         /v1/blocklist.json ~215 KB roh / ~27 KB gzip     │
+  │              │                                           │
+  │              ▼                                           │
+  │       CloudFront (CORS *, compress, PriceClass_100)      │
+  └──────────────┬───────────────────────────────────────────┘
                  │  conditional GET, 1x/Tag
                  ▼
        Safari Web Extension (iOS 15+)
@@ -64,8 +63,21 @@ Zwei entkoppelte Komponenten, verbunden nur über ein statisches JSON:
          └── content script → tier "warn" Overlay
 ```
 
-Serving ist bewusst **statisch**. Lambda läuft 1x/Tag, nicht pro Client-Request:
-die Liste ändert sich täglich, wird aber von N Geräten täglich abgefragt.
+Serving ist bewusst **statisch**. Lambda läuft 1x/Tag, nicht pro
+Client-Request: die Liste ändert sich täglich, wird aber von N Geräten
+täglich abgefragt.
+
+**EventBridge Rule, nicht Scheduler.** Rules gibt es seit CloudWatch Events in
+jeder Region; ob EventBridge *Scheduler* in `eu-central-2` vollständig
+verfügbar ist, liess sich nicht belastbar verifizieren. Für einen Trigger pro
+Tag bringt Scheduler null funktionalen Vorteil — damit ist die Frage vom Tisch
+statt offen.
+
+Deploy läuft über **GitHub Actions mit OIDC** (`pipeline/bootstrap-oidc.yaml`
+einmalig, dann `.github/workflows/deploy.yml`). Es liegt nirgends ein
+statischer AWS-Key — bei einem öffentlichen Repo doppelt relevant, weil die
+IAM-Rolle per `sub`-Bedingung auf `repo:…:ref:refs/heads/main` festgenagelt
+ist und ein Fork-PR sie damit nicht annehmen kann.
 
 ---
 
@@ -91,27 +103,32 @@ Liste nachgeladen.
 ```json
 {
   "schema": 1,
-  "generated_at": "2026-08-15T04:00:12Z",
+  "generated_at": "2026-08-16T04:00:12Z",
+  "entry_count": 1581,
   "sources": [
     {
       "id": "sks",
-      "name": "Stiftung für Konsumentenschutz",
+      "name": "Stiftung fuer Konsumentenschutz",
       "url": "https://www.konsumentenschutz.ch/online-ratgeber/dropshipping-die-stolpersteine-beim-onlinehandel-mit-billigware-aus-china/",
-      "fetched_at": "2026-08-15T04:00:03Z",
-      "list_updated": "2026-08-04"
+      "fetched_at": "2026-08-16T04:00:03Z",
+      "row_count": 1597
     }
   ],
   "entries": [
     {
-      "domain": "swisstailored.ch",
+      "domain": "adams-fashion.com",
       "tier": "warn",
-      "company": "OG Commerce GmbH",
-      "country": "CH",
-      "registry_id": null,
-      "reasons": ["misleading_origin", "inflated_price", "no_returns"],
+      "company": "E-COM BUY-UP COMPANY LIMITED",
+      "country": "GB",
+      "registry_id": "13705169",
       "source_ids": ["sks"],
-      "source_url": "https://www.konsumentenschutz.ch/online-ratgeber/dropshipping-die-stolpersteine-beim-onlinehandel-mit-billigware-aus-china/",
-      "first_seen": "2026-03-02",
+      "site_status": "offline"
+    },
+    {
+      "domain": "adamandrose-clo.com",
+      "tier": "warn",
+      "reasons": ["no_imprint"],
+      "source_ids": ["sks"],
       "site_status": "offline"
     }
   ]
@@ -128,10 +145,17 @@ Liste nachgeladen.
   `inflated_price`, `no_delivery`, `low_quality`.
 - `tier` steht **in den Daten**, nicht als Logik im Client. Policy-Änderung =
   Pipeline-Deploy, kein App-Update.
-- `source_url` pro Eintrag: die Warnung zeigt immer, *wer* das sagt. Wir
-  publizieren keine eigene Wertung (siehe §8).
+- **Kein `source_url` pro Eintrag.** Die URL hängt am `sources`-Block und wird
+  über `source_ids` aufgelöst. Pro Eintrag wiederholt wäre sie bei ~1600
+  Einträgen allein 194 KB — 38 % des Roh-JSON. Die Warnung zeigt trotzdem
+  immer, *wer* das sagt.
+- **Leere Felder werden weggelassen.** Ein Eintrag ohne Firmenangabe ist fünf
+  Keys statt elf. Der Client behandelt fehlende Keys als `null`/`[]`.
+  Zusammen mit dem Punkt oben: **512 KB → 215 KB roh, 30 KB → 27 KB gzip.**
+  Das Mobilgerät muss das täglich parsen und in `browser.storage.local` halten,
+  deshalb zählt die Rohgrösse, nicht nur die übertragene.
 - `site_status: offline` bleibt in der Liste — geparkte Domains werden
-  reaktiviert. (In der SKS-Quelle sind 1322 von 1602 Einträgen `offline`.)
+  reaktiviert. (Stand 2026-08-16: 1307 von 1581 `offline`.)
 - `company` ist **nullable**: bei 694 Einträgen nennt die Quelle keine Firma,
   sondern nur den Impressums-Verstoss (§5.2).
 
@@ -376,5 +400,6 @@ i18n FR/IT · App-Store-Release · DNS-Profil-Variante · Android/Firefox
 | E2 | Lizenz | **MIT** für Code. Daten sind nicht unsere — separat in `NOTICE.md` attribuiert, nicht mitlizenziert. |
 | E3 | App Store oder nur Sideload? | **Sideload zuerst.** Review kostet Zeit und zwingt zu Support-Zusagen. Wenn's läuft und andere es wollen, dann Store. |
 | E4 | Repo-Name | **Entschieden: `swiss-fakeshop-guard`** |
-| E5 | Eigene Domain für die Liste? | Offen. Fürs MVP CloudFront-Default-Domain. Eigene Domain erst, wenn Dritte die Liste konsumieren (dann ist sie ein Contract). |
-| E6 | AWS-Region | Offen. `eu-central-1` naheliegend; CloudFront ist ohnehin global, S3-Region betrifft nur den Build. |
+| E5 | Eigene Domain für die Liste? | Offen. Fürs MVP CloudFront-Default-Domain. Eigene Domain erst, wenn Dritte die Liste konsumieren (dann ist sie ein Contract). Achtung: ACM-Zertifikat müsste dann in `us-east-1` liegen, nicht in `eu-central-2`. |
+| E6 | AWS-Region | **Entschieden: `eu-central-2`** (Zürich). Die lokal installierte AWS CLI (1.18.69 / botocore 1.16.19, von 2020) kennt diese Region nicht — Deploy läuft deshalb ohnehin über GitHub Actions mit aktueller Toolchain. |
+| E7 | Zweite Quelle (Watchlist Internet) | Offen. Der Parser ist quellenweise gekapselt (`src/sources/`), `merge()` und das Datenmodell sind schon mehrquellenfähig (`source_ids` als Liste, Tier-Eskalation bei Konflikt). Reine Ergänzung, keine Umbaute. |

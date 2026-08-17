@@ -1,0 +1,299 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  swiss-fakeshop-guard Blocklist-Pipeline. Taeglich: Warnlisten holen,
+  normalisieren, als statisches JSON nach S3 schreiben, ueber CloudFront
+  ausliefern. Serving ist bewusst statisch -- die Liste aendert sich 1x/Tag,
+  wird aber von N Geraeten taeglich abgefragt.
+
+Parameters:
+  ScheduleExpression:
+    Type: String
+    Default: cron(0 4 * * ? *)
+    Description: >
+      Taeglicher Build. Bewusst eine EventBridge RULE (SAM-Event-Typ Schedule),
+      nicht EventBridge Scheduler: Rules gibt es seit CloudWatch Events in jeder
+      Region, und fuer einen Trigger pro Tag bringt Scheduler null Vorteil.
+
+  AlarmEmail:
+    Type: String
+    Default: ''
+    Description: >
+      Optional. Empfaenger fuer Fail-Closed-Alarme. Leer = kein SNS-Abo
+      (Fehler bleiben in CloudWatch sichtbar).
+
+  LogRetentionDays:
+    Type: Number
+    Default: 30
+    AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 180, 365]
+
+Conditions:
+  HasAlarmEmail: !Not [!Equals [!Ref AlarmEmail, '']]
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Timeout: 120
+    MemorySize: 512
+    Architectures: [arm64]
+
+Resources:
+
+  # --- Storage --------------------------------------------------------------
+
+  BlocklistBucket:
+    Type: AWS::S3::Bucket
+    # Retain: die publizierte Liste ist der Vertrag mit den Clients. Ein
+    # versehentliches Stack-Delete darf sie nicht mitnehmen.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      # Versioning erlaubt Rollback eines Fehlpublish per Objekt-Version.
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      LifecycleConfiguration:
+        Rules:
+          # Alte Versionen der Liste: 90 Tage Audit-Fenster genuegt.
+          - Id: expire-old-versions
+            Status: Enabled
+            NoncurrentVersionExpirationInDays: 90
+          # Der Last-Known-Good-Rohcache braucht keine Historie.
+          - Id: expire-raw-cache-versions
+            Status: Enabled
+            Prefix: raw/
+            NoncurrentVersionExpirationInDays: 7
+
+  BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref BlocklistBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          # Nur CloudFront darf lesen, und nur diese Distribution.
+          - Sid: AllowCloudFrontRead
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub '${BlocklistBucket.Arn}/v1/*'
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub 'arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${Distribution}'
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource:
+              - !GetAtt BlocklistBucket.Arn
+              - !Sub '${BlocklistBucket.Arn}/*'
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+
+  # --- Delivery -------------------------------------------------------------
+
+  OriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub '${AWS::StackName}-oac'
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  ResponseHeadersPolicy:
+    Type: AWS::CloudFront::ResponseHeadersPolicy
+    Properties:
+      ResponseHeadersPolicyConfig:
+        Name: !Sub '${AWS::StackName}-cors'
+        Comment: >
+          CORS fuer den Extension-Fetch. Der Background-Service-Worker liest
+          cross-origin, ohne Access-Control-Allow-Origin kaeme die Antwort
+          nicht durch. Die Liste ist oeffentliche Information, daher '*'.
+        CorsConfig:
+          AccessControlAllowCredentials: false
+          AccessControlAllowOrigins:
+            Items: ['*']
+          AccessControlAllowHeaders:
+            Items: ['if-none-match', 'content-type']
+          AccessControlAllowMethods:
+            Items: [GET, HEAD, OPTIONS]
+          AccessControlExposeHeaders:
+            Items: ['etag']
+          AccessControlMaxAgeSec: 86400
+          OriginOverride: true
+        SecurityHeadersConfig:
+          ContentTypeOptions:
+            Override: true
+          StrictTransportSecurity:
+            AccessControlMaxAgeSec: 31536000
+            IncludeSubdomains: true
+            Override: true
+
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub '${AWS::StackName} blocklist delivery'
+        HttpVersion: http2and3
+        IPV6Enabled: true
+        # PriceClass_100 = NA + EU. Die Nutzer sind in der Schweiz.
+        PriceClass: PriceClass_100
+        Origins:
+          - Id: s3-blocklist
+            DomainName: !GetAtt BlocklistBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt OriginAccessControl.Id
+            S3OriginConfig:
+              OriginAccessIdentity: ''
+        DefaultCacheBehavior:
+          TargetOriginId: s3-blocklist
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD, OPTIONS]
+          Compress: true
+          # Managed-CachingOptimized: respektiert Cache-Control vom Origin,
+          # komprimiert, kein Cookie-/Query-Forwarding.
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          ResponseHeadersPolicyId: !Ref ResponseHeadersPolicy
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 404
+            ResponsePagePath: /v1/meta.json
+            ErrorCachingMinTTL: 60
+
+  # --- Alarme ---------------------------------------------------------------
+
+  AlarmTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: swiss-fakeshop-guard
+
+  AlarmSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasAlarmEmail
+    Properties:
+      TopicArn: !Ref AlarmTopic
+      Protocol: email
+      Endpoint: !Ref AlarmEmail
+
+  # --- Build-Funktion -------------------------------------------------------
+
+  BuilderFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      # CodeUri ist das pipeline/-Verzeichnis; src/ ist damit ein Package und
+      # die relativen Imports in handler.py loesen auf.
+      CodeUri: ./
+      Handler: src.handler.handler
+      Description: Baut die Blockliste aus den Warnlisten und publiziert sie.
+      Environment:
+        Variables:
+          BUCKET_NAME: !Ref BlocklistBucket
+          DISTRIBUTION_ID: !Ref Distribution
+          ALARM_TOPIC_ARN: !Ref AlarmTopic
+          PYTHONWARNINGS: ignore
+      Policies:
+        - Statement:
+            - Sid: BlocklistObjects
+              Effect: Allow
+              Action: [s3:GetObject, s3:PutObject]
+              Resource:
+                - !Sub '${BlocklistBucket.Arn}/v1/*'
+                - !Sub '${BlocklistBucket.Arn}/raw/*'
+            - Sid: Invalidate
+              Effect: Allow
+              Action: cloudfront:CreateInvalidation
+              Resource: !Sub 'arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${Distribution}'
+            - Sid: Alarm
+              Effect: Allow
+              Action: sns:Publish
+              Resource: !Ref AlarmTopic
+      Events:
+        Daily:
+          Type: Schedule
+          Properties:
+            Schedule: !Ref ScheduleExpression
+            Description: Taeglicher Blocklist-Build
+            Enabled: true
+
+  BuilderLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${BuilderFunction}'
+      RetentionInDays: !Ref LogRetentionDays
+
+  # Ein fehlgeschlagener Lauf heisst: die Liste wurde NICHT aktualisiert.
+  # Zwei Tage still veraltete Daten sind das eigentliche Risiko, deshalb
+  # alarmiert schon ein einzelner Fehler.
+  BuilderErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-builder-errors'
+      AlarmDescription: >
+        Der taegliche Build ist fehlgeschlagen -- entweder Quelle nicht
+        erreichbar, Struktur geaendert, oder Fail-Closed-Gate hat den Publish
+        verweigert. Die bisherige Liste bleibt ausgeliefert.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref BuilderFunction
+      Statistic: Sum
+      Period: 86400
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlarmTopic]
+
+  # Gegenprobe: laeuft der Build ueberhaupt? Ein stumm nicht ausgeloester
+  # Schedule wuerde von der Errors-Metrik nicht erfasst.
+  BuilderMissingRunAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-builder-not-running'
+      AlarmDescription: >
+        In 48h kein einziger Build-Lauf -- Schedule deaktiviert oder Funktion
+        nicht aufgerufen.
+      Namespace: AWS/Lambda
+      MetricName: Invocations
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref BuilderFunction
+      Statistic: Sum
+      Period: 172800
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions: [!Ref AlarmTopic]
+
+Outputs:
+  MetaUrl:
+    Description: Diese URL pollt die Extension taeglich (conditional GET).
+    Value: !Sub 'https://${Distribution.DomainName}/v1/meta.json'
+  BlocklistUrl:
+    Value: !Sub 'https://${Distribution.DomainName}/v1/blocklist.json'
+  BucketName:
+    Value: !Ref BlocklistBucket
+  DistributionId:
+    Value: !Ref Distribution
+  FunctionName:
+    Description: Fuer einen manuellen Erst-Lauf via aws lambda invoke.
+    Value: !Ref BuilderFunction
+  AlarmTopicArn:
+    Value: !Ref AlarmTopic
